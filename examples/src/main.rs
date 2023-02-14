@@ -11,7 +11,7 @@ use winterfell::StarkProof;
 
 use examples::{fibonacci, rescue, vdf, ExampleOptions, ExampleType};
 #[cfg(feature = "std")]
-use examples::{lamport, merkle, rescue_raps};
+use examples::{lamport, merkle, rescue_raps, collatz};
 
 // EXAMPLE RUNNER
 // ================================================================================================
@@ -61,6 +61,10 @@ fn main() {
         #[cfg(feature = "std")]
         ExampleType::LamportT { num_signers } => {
             lamport::threshold::get_example(&options, num_signers)
+        }
+        #[cfg(feature = "std")]
+        ExampleType::Collatz { num_initial } => {
+            collatz::get_example(&options, num_initial)
         }
     }
     .expect("The example failed to initialize.");

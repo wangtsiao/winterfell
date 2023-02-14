@@ -2,7 +2,6 @@
 //
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
-
 use structopt::StructOpt;
 use winterfell::{
     crypto::hashers::{GriffinJive64_256, Rp64_256, RpJive64_256},
@@ -20,6 +19,7 @@ pub mod rescue;
 pub mod rescue_raps;
 pub mod utils;
 pub mod vdf;
+pub mod collatz;
 
 #[cfg(test)]
 mod tests;
@@ -200,6 +200,11 @@ pub enum ExampleType {
         #[structopt(short = "n", default_value = "3")]
         num_signers: usize,
     },
+    #[cfg(feature = "std")]
+    Collatz {
+        #[structopt(short = "n", default_value = "52")]
+        num_initial: usize,
+    }
 }
 
 /// Defines a set of hash functions available for the provided examples. Some examples may not
