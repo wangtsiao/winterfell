@@ -9,13 +9,15 @@ use super::{
 
 pub struct CollatzProver<H: ElementHasher> {
     options: ProofOptions,
+    step: usize,
     _hasher: PhantomData<H>,
 }
 
 impl<H: ElementHasher> CollatzProver<H> {
-    pub fn new(options: ProofOptions) -> Self {
+    pub fn new(options: ProofOptions, step: usize) -> Self {
         Self { 
-            options, 
+            options,
+            step, 
             _hasher: PhantomData, 
         }
     }
@@ -48,22 +50,21 @@ impl<H: ElementHasher> CollatzProver<H> {
         trace.fill(
             |state: &mut [BaseElement]| {
                 let mut n = initial_number;
-                for i in 0..TRACE_WIDTH {
+                for i in 0..(TRACE_WIDTH-1) {
                     state[i] = BaseElement::new((n & 1_usize) as u128);
                     n >>= 1;
                 }
             },
-            |_, state: &mut [BaseElement]| {
+            |row, state: &mut [BaseElement]| {
                 // Compute number from a row of state
                 let mut n = BaseElement::ONE;
-                for i in (0..TRACE_WIDTH).rev() {
+                for i in (0..(TRACE_WIDTH-1)).rev() {
                     n *= BaseElement::new(2);
                     n = n + state[i];
                 }
-                n -= BaseElement::new(1 << (TRACE_WIDTH));
+                n -= BaseElement::new(1 << (TRACE_WIDTH-1));
 
-
-                println!("n = {:?}, update state {:?}", n, state);
+                println!("row = {}, n = {:?}, update state {:?}", row, n, state);
 
                 // If the number is ONE, then reach pad table, return directly.
                 if n == BaseElement::ONE {
@@ -80,10 +81,13 @@ impl<H: ElementHasher> CollatzProver<H> {
                 // Not sure how to conver BaseElement to integer
                 let n_bytes = n.as_bytes();
                 let mut n = n_bytes[0] as u32;
-                for i in 0..TRACE_WIDTH {
+                for i in 0..(TRACE_WIDTH-1) {
                     state[i] = BaseElement::new((n & 1) as u128);
                     n >>= 1;              
                 }
+
+                // Update the computation step
+                state[TRACE_WIDTH-1] += BaseElement::ONE;
             },
         );
 
@@ -103,14 +107,15 @@ where
     fn get_pub_inputs(&self, trace: &Self::Trace) -> PublicInputs {
         // Trace table is redundant
         let mut n = BaseElement::ONE;
-        for i in (0..TRACE_WIDTH).rev() {
+        for i in (0..(TRACE_WIDTH-1)).rev() {
             n *= BaseElement::new(2);
             n = n + trace.get(i, 0);
         }
-        n -= BaseElement::new(1 << (TRACE_WIDTH));
+        n -= BaseElement::new(1 << (TRACE_WIDTH-1));
 
         PublicInputs { 
            initial_num: n,
+           step: BaseElement::new(self.step as u128),
         }
     }
 
@@ -121,7 +126,7 @@ where
 
 // HELPER FUNCTION
 // ---------------------------------------------------------------------
-fn ceil_to_power_of_two(n: usize) -> usize {
+pub fn ceil_to_power_of_two(n: usize) -> usize {
     let e = (n as f64).log2().ceil() as usize;
     1 << e
 }

@@ -19,7 +19,7 @@ use air::{CollatzAir, PublicInputs};
 
 // CONSTANTS
 // ================================================================================================
-const TRACE_WIDTH: usize = 6;
+const TRACE_WIDTH: usize = 7;
 
 // COLLATZ PATH EXAMPLE
 // ================================================================================================
@@ -79,7 +79,7 @@ where
     H: ElementHasher<BaseField = BaseElement>,
 {
     fn prove(&self) -> StarkProof {
-        let prover: CollatzProver<H> = CollatzProver::<H>::new(self.options.clone());
+        let prover: CollatzProver<H> = CollatzProver::<H>::new(self.options.clone(), self.step);
 
         // generate the execution trace
         let now: Instant = Instant::now();
@@ -100,6 +100,7 @@ where
     fn verify(&self, proof: StarkProof) -> Result<(), VerifierError> {
         let pub_inputs: PublicInputs = PublicInputs {
             initial_num: BaseElement::new(self.initial_number as u128),
+            step: BaseElement::new(self.step as u128),
         };
         winterfell::verify::<CollatzAir, H>(proof, pub_inputs)
     }
@@ -107,6 +108,7 @@ where
     fn verify_with_wrong_inputs(&self, proof: StarkProof) -> Result<(), VerifierError> {
         let pub_inputs: PublicInputs = PublicInputs {
             initial_num: BaseElement::new(self.initial_number as u128),
+            step: BaseElement::new((self.step + 1) as u128),
         };
         winterfell::verify::<CollatzAir, H>(proof, pub_inputs)
     }

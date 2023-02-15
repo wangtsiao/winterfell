@@ -1,4 +1,5 @@
 use std::vec;
+use byteorder::{LittleEndian, ByteOrder};
 
 use core_utils::{Serializable, AsBytes};
 use winterfell::{Air, AirContext, EvaluationFrame, TransitionConstraintDegree, Assertion};
@@ -7,11 +8,12 @@ use crate::utils::{is_binary, are_equal};
 
 use log::debug;
 use super::{
-    TRACE_WIDTH, TraceInfo, ProofOptions, FieldElement, BaseElement
+    TRACE_WIDTH, TraceInfo, ProofOptions, FieldElement, BaseElement, prover,
 };
 
 pub struct PublicInputs {
     pub initial_num: BaseElement,
+    pub step: BaseElement,
 }
 
 impl Serializable for PublicInputs {
@@ -23,6 +25,7 @@ impl Serializable for PublicInputs {
 pub struct CollatzAir {
     context: AirContext<BaseElement>,
     initial_num: BaseElement,
+    step: BaseElement,
 }
 
 impl Air for CollatzAir {
@@ -37,9 +40,18 @@ impl Air for CollatzAir {
             TransitionConstraintDegree::new(2),
         ];
         assert_eq!(TRACE_WIDTH, trace_info.width());
+
+        let step = LittleEndian::read_u128(pub_inputs.step.as_bytes()) as usize;
+        let pad_length = prover::ceil_to_power_of_two(step) - (step + 1) + 2;
+        
+        println!("exempt last {} rows", pad_length);
+
+        let context = AirContext::new(trace_info, degrees, 14, options).set_num_transition_exemptions(pad_length);
+
         CollatzAir { 
-            context: AirContext::new(trace_info, degrees, 12, options), 
+            context, 
             initial_num: pub_inputs.initial_num,
+            step: pub_inputs.step,
         }
     }
 
@@ -55,15 +67,12 @@ impl Air for CollatzAir {
     ) {
         let current = frame.current();
         let next = frame.next();
-        if num_from_state(current) == E::ONE {
-            return;
-        }
 
         debug_assert_eq!(TRACE_WIDTH, current.len());
         debug_assert_eq!(TRACE_WIDTH, next.len());
 
         // enforce that values in all register must be binary
-        for i in 0..TRACE_WIDTH {
+        for i in 0..(TRACE_WIDTH-1) {
             result[0] += is_binary(current[i]);
         }
 
@@ -93,6 +102,8 @@ impl Air for CollatzAir {
             n >>= 1;
         }
 
+        let step = u128_from_field(&self.step) as usize;
+
         // BOUNDARY CONSTRAINT
         vec![
             // enforce the first row is our input initial number
@@ -103,13 +114,19 @@ impl Air for CollatzAir {
             Assertion::single(4, 0, bit_vec[4]),
             Assertion::single(5, 0, bit_vec[5]),
 
+            // enfore the step register in first row is 0
+            Assertion::single(6, 0, Self::BaseField::ZERO),
+
             // enforce the last step row is one
-            Assertion::single(0, 11, Self::BaseField::ONE),
-            Assertion::single(1, 11, Self::BaseField::ZERO),
-            Assertion::single(2, 11, Self::BaseField::ZERO),
-            Assertion::single(3, 11, Self::BaseField::ZERO),
-            Assertion::single(4, 11, Self::BaseField::ZERO),
-            Assertion::single(5, 11, Self::BaseField::ZERO),
+            Assertion::single(0, step, Self::BaseField::ONE),
+            Assertion::single(1, step, Self::BaseField::ZERO),
+            Assertion::single(2, step, Self::BaseField::ZERO),
+            Assertion::single(3, step, Self::BaseField::ZERO),
+            Assertion::single(4, step, Self::BaseField::ZERO),
+            Assertion::single(5, step, Self::BaseField::ZERO),
+
+            // enforce the step register in last row is step
+            Assertion::single(6, step, self.step)
         ]
     }
 }
@@ -117,10 +134,14 @@ impl Air for CollatzAir {
 
 fn num_from_state<E: FieldElement<BaseField = BaseElement>>(state: &[E]) -> E {
     let mut n: E = E::ONE;
-    for i in (0..TRACE_WIDTH).rev() {
+    for i in (0..(TRACE_WIDTH-1)).rev() {
         n *= E::from(2 as u32);
         n += state[i];
     }
-    n -= E::from((1 << (TRACE_WIDTH)) as u32);
+    n -= E::from((1 << (TRACE_WIDTH-1)) as u32);
     n
+}
+
+fn u128_from_field<E: FieldElement<BaseField = BaseElement>>(n: &E) -> u128 {
+    LittleEndian::read_uint128(n.as_bytes(), 16)
 }
